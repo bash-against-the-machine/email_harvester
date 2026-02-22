@@ -3,6 +3,11 @@ A simple email harvester script using Duck Duck Go search engine.
 This returns a few basic emails and the real benefit is to simply see how an organization structures their email addresses (john.smith@domain.com or jsmith@domain.com, etc).
 The script prints to screen and dumps emails into a text file that is named using [domain_time].txt structure in the same directory as the script or into a directory specified as an optional argument.
 
+### Download and give permission to execute script
+```
+git clone https://github.com/bash-against-the-machine/email_harvester.git && cd email_harvester && chmod +x email_harvester.py
+```
+
 ### Usage
 For a single domain and have the output saved in the same directory as the script:
 ```
