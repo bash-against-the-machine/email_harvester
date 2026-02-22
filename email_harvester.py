@@ -7,6 +7,9 @@ Requires: pip install ddgs requests beautifulsoup4
 Usage:
     python3 email_harvester.py example.com
     python3 email_harvester.py example.com --results 20
+    python3 email_harvester.py example.com /path/to/output/dir
+    python3 email_harvester.py domains.txt
+    python3 email_harvester.py domains.txt /path/to/output/dir
 """
 
 import argparse
@@ -121,11 +124,59 @@ def harvest(domain: str, num_results: int = 10) -> set[str]:
     return all_emails
 
 
+def resolve_target(target: str) -> list[str]:
+    """Return a list of domains from the target argument.
+
+    If target is an existing file, read one domain per line.
+    If target looks like a file path but doesn't exist, exit with an error.
+    Otherwise treat target as a single domain name.
+    """
+    if os.path.isfile(target):
+        with open(target) as f:
+            domains = [line.strip() for line in f if line.strip()]
+        if not domains:
+            print(f"[!] File '{target}' is empty or contains no valid domains.", file=sys.stderr)
+            sys.exit(1)
+        return domains
+
+    # Looks like an intended file path (contains a separator or file extension)
+    looks_like_path = os.sep in target or "/" in target or target.endswith(".txt")
+    if looks_like_path:
+        print(f"[!] File not found: {target}", file=sys.stderr)
+        sys.exit(1)
+
+    return [target]
+
+
+def normalize_domain(domain: str) -> str:
+    domain = domain.strip().lstrip("@").lower()
+    if domain.startswith("www."):
+        domain = domain[4:]
+    return domain
+
+
+def save_results(emails: set[str], domain: str, output_dir: str) -> None:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_file = os.path.join(output_dir, f"{domain}_{timestamp}.txt")
+    with open(output_file, "w") as f:
+        f.write("\n".join(sorted(emails)) + "\n")
+    print(f"\n[+] Results saved to: {output_file}", file=sys.stderr)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Harvest email addresses for a domain using DuckDuckGo + direct scraping."
     )
-    parser.add_argument("domain", help="Target domain, e.g. example.com")
+    parser.add_argument(
+        "target",
+        help="Target domain (e.g. example.com) or path to a text file with one domain per line",
+    )
+    parser.add_argument(
+        "output_dir",
+        nargs="?",
+        default=None,
+        help="Directory to save output files (created if needed; defaults to script directory)",
+    )
     parser.add_argument(
         "-n", "--results",
         type=int,
@@ -135,27 +186,34 @@ def main():
     )
     args = parser.parse_args()
 
-    domain = args.domain.strip().lstrip("@").lower()
-    if domain.startswith("www."):
-        domain = domain[4:]
-
-    print(f"[*] Harvesting emails for: {domain}\n", file=sys.stderr)
-
-    emails = harvest(domain, num_results=args.results)
-
-    if emails:
-        print(f"\n[+] Found {len(emails)} unique email address(es):")
-        for email in sorted(emails):
-            print(email)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        output_file = os.path.join(script_dir, f"{domain}_{timestamp}.txt")
-        with open(output_file, "w") as f:
-            f.write("\n".join(sorted(emails)) + "\n")
-        print(f"\n[+] Results saved to: {output_file}", file=sys.stderr)
+    # Resolve output directory
+    if args.output_dir:
+        output_dir = args.output_dir
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            print(f"[*] Created output directory: {output_dir}", file=sys.stderr)
     else:
-        print("\n[-] No email addresses found.")
+        output_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # Resolve domain list
+    domains = resolve_target(args.target)
+
+    for raw_domain in domains:
+        domain = normalize_domain(raw_domain)
+        if not domain:
+            continue
+
+        print(f"\n[*] Harvesting emails for: {domain}\n", file=sys.stderr)
+
+        emails = harvest(domain, num_results=args.results)
+
+        if emails:
+            print(f"\n[+] Found {len(emails)} unique email address(es) for {domain}:")
+            for email in sorted(emails):
+                print(email)
+            save_results(emails, domain, output_dir)
+        else:
+            print(f"\n[-] No email addresses found for {domain}.")
 
 
 if __name__ == "__main__":
